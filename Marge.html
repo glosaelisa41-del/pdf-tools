@@ -1,0 +1,220 @@
+<div class="pdf-merge-tool">
+  <h2>Merge PDF</h2>
+  <p class="info-text">To change the order of your PDFs, drag and drop the files as you want.</p>
+
+  <!--File upload area-->
+  <div class="pdf-upload-area" id="pdf-drop-area">
+    <label class="pdf-select-btn">
+      <span>+</span> Add PDFs
+      <input accept="application/pdf" id="pdf-input" multiple="" type="file" />
+    </label>
+  </div>
+
+  <!--Preview container-->
+  <div class="pdf-preview-container" id="pdf-preview"></div>
+
+  <!--Merge button-->
+  <button class="merge-btn" id="merge-btn" style="display: none;">Merge PDF</button>
+  <a class="download-btn" id="download-btn" style="display: none;">Download Merged PDF</a>
+</div>
+
+<style>
+/* Scoped PDF Tool CSS */
+.pdf-merge-tool {
+  font-family: 'Arial', sans-serif;
+  background: #f4f4f8;
+  padding: 30px;
+  max-width: 900px;
+  margin: 40px auto;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.pdf-merge-tool h2 {
+  font-size: 28px;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.pdf-merge-tool .info-text {
+  font-size: 14px;
+  color: #444;
+  background: #eaf3ff;
+  padding: 10px;
+  border-radius: 5px;
+  display: inline-block;
+  margin-bottom: 20px;
+}
+
+.pdf-upload-area {
+  border: 2px dashed #ddd;
+  padding: 40px;
+  border-radius: 10px;
+  transition: 0.3s;
+  background: #fff;
+}
+
+.pdf-upload-area.dragover {
+  border-color: #e53935;
+  background: #fff0f0;
+}
+
+.pdf-select-btn {
+  display: inline-block;
+  background: #e53935;
+  color: white;
+  padding: 15px 40px;
+  border-radius: 50px;
+  cursor: pointer;
+  font-size: 18px;
+  position: relative;
+}
+
+.pdf-select-btn input {
+  position: absolute;
+  opacity: 0;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+.pdf-preview-container {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-top: 25px;
+}
+
+.pdf-item {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 10px;
+  width: 160px;
+  text-align: center;
+  box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+}
+
+.pdf-item img {
+  width: 100%;
+  height: 200px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+.pdf-item p {
+  font-size: 13px;
+  margin-top: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merge-btn, .download-btn {
+  margin-top: 25px;
+  background: #e53935;
+  color: white;
+  border: none;
+  padding: 15px 40px;
+  font-size: 18px;
+  border-radius: 50px;
+  cursor: pointer;
+  display: inline-block;
+  text-decoration: none;
+}
+
+.merge-btn:hover, .download-btn:hover {
+  background: #d32f2f;
+}
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script>
+(function(){
+  const dropArea = document.getElementById('pdf-drop-area');
+  const fileInput = document.getElementById('pdf-input');
+  const previewContainer = document.getElementById('pdf-preview');
+  const mergeBtn = document.getElementById('merge-btn');
+  const downloadBtn = document.getElementById('download-btn');
+  let pdfFiles = [];
+
+  // Drag & Drop
+  ['dragenter', 'dragover'].forEach(event => {
+    dropArea.addEventListener(event, (e) => {
+      e.preventDefault();
+      dropArea.classList.add('dragover');
+    });
+  });
+
+  ['dragleave', 'drop'].forEach(event => {
+    dropArea.addEventListener(event, (e) => {
+      e.preventDefault();
+      dropArea.classList.remove('dragover');
+    });
+  });
+
+  dropArea.addEventListener('drop', (e) => {
+    handleFiles(e.dataTransfer.files);
+  });
+
+  fileInput.addEventListener('change', (e) => {
+    handleFiles(e.target.files);
+  });
+
+  function handleFiles(files) {
+    for (const file of files) {
+      if(file.type === 'application/pdf') {
+        pdfFiles.push(file);
+        showPreview(file);
+      }
+    }
+    if(pdfFiles.length > 0){
+      mergeBtn.style.display = 'inline-block';
+    }
+  }
+
+  // Show file preview (dummy thumbnail)
+  function showPreview(file){
+    const reader = new FileReader();
+    const item = document.createElement('div');
+    item.classList.add('pdf-item');
+    
+    // Using a static PDF icon for preview
+    const img = document.createElement('img');
+    img.src = 'https://cdn-icons-png.flaticon.com/512/337/337946.png';
+    
+    const name = document.createElement('p');
+    name.textContent = file.name;
+
+    item.appendChild(img);
+    item.appendChild(name);
+    previewContainer.appendChild(item);
+  }
+
+  // Merge PDFs
+  mergeBtn.addEventListener('click', async () => {
+    const { PDFDocument } = PDFLib;
+    const mergedPdf = await PDFDocument.create();
+
+    for (const file of pdfFiles) {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await PDFDocument.load(arrayBuffer);
+      const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+      copiedPages.forEach(page => mergedPdf.addPage(page));
+    }
+
+    const mergedPdfFile = await mergedPdf.save();
+    const blob = new Blob([mergedPdfFile], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+
+    // Hide merge button, show download
+    mergeBtn.style.display = 'none';
+    downloadBtn.style.display = 'inline-block';
+    downloadBtn.href = url;
+    downloadBtn.download = 'merged.pdf';
+  });
+})();
+</script>

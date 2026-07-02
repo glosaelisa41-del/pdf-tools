@@ -1,0 +1,212 @@
+<div class="split-pdf-container">
+  <h1>Split PDF file</h1>
+  <p>Separate one page or a range into independent PDF files.</p>
+
+  <div class="upload-box" id="upload-box" onclick="document.getElementById('pdf-input').click()">
+    <input type="file" id="pdf-input" accept="application/pdf" hidden>
+    <p><strong>Select PDF file</strong> or drag it here</p>
+  </div>
+
+  <canvas id="pdf-canvas"></canvas>
+
+  <div class="split-options" id="split-options" style="display:none;">
+    <h3>Split Options:</h3>
+    <label><input type="radio" name="splitType" value="each" checked> Split each page</label><br>
+    <label><input type="radio" name="splitType" value="range"> Split by range:</label>
+    <input type="text" id="rangeInput" placeholder="e.g. 1-2,3-4" disabled>
+    <br><br>
+    <button onclick="splitPDF()">Split PDF</button>
+  </div>
+
+  <div id="download-area" style="display:none;">
+    <a id="download-link" download="split.pdf">Download Split PDF</a>
+  </div>
+</div>
+
+
+<style>
+  
+.split-pdf-container {
+  max-width: 600px;
+  margin: auto;
+  background: #f9f9f9;
+  padding: 25px;
+  border-radius: 12px;
+  box-shadow: 0 0 15px rgba(0,0,0,0.1);
+  text-align: center;
+  font-family: 'Segoe UI', sans-serif;
+}
+
+.split-pdf-container h1 {
+  color: #222;
+  margin-bottom: 10px;
+}
+
+.upload-box {
+  border: 2px dashed #e74c3c;
+  background: #fff;
+  padding: 40px;
+  border-radius: 10px;
+  color: #e74c3c;
+  cursor: pointer;
+  margin: 20px 0;
+  transition: 0.3s;
+}
+
+.upload-box:hover {
+  background: #ffeaea;
+}
+
+#pdf-canvas {
+  margin-top: 15px;
+  max-width: 100%;
+  border: 1px solid #ccc;
+  display: none;
+}
+
+.split-options {
+  margin-top: 20px;
+  text-align: left;
+}
+
+.split-options h3 {
+  margin-bottom: 10px;
+  color: #333;
+}
+
+.split-options input[type="text"] {
+  padding: 5px;
+  width: 100%;
+  max-width: 300px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+.split-options button {
+  background-color: #e74c3c;
+  color: white;
+  padding: 10px 25px;
+  border: none;
+  font-size: 16px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.split-options button:hover {
+  background-color: #c0392b;
+}
+
+#download-area {
+  margin-top: 20px;
+}
+
+#download-link {
+  background-color: green;
+  color: white;
+  padding: 10px 25px;
+  text-decoration: none;
+  border-radius: 6px;
+}
+
+  
+  </style>
+
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.min.js"></script>
+
+<script>
+let uploadedBytes = null;
+
+const input = document.getElementById('pdf-input');
+const canvas = document.getElementById('pdf-canvas');
+const uploadBox = document.getElementById('upload-box');
+const splitOptions = document.getElementById('split-options');
+const rangeInput = document.getElementById('rangeInput');
+
+uploadBox.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  uploadBox.style.background = "#ffeaea";
+});
+uploadBox.addEventListener('dragleave', () => {
+  uploadBox.style.background = "#fff";
+});
+uploadBox.addEventListener('drop', (e) => {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file.type === "application/pdf") handlePDF(file);
+});
+
+input.addEventListener('change', () => {
+  const file = input.files[0];
+  if (file.type === "application/pdf") handlePDF(file);
+});
+
+document.querySelectorAll('input[name="splitType"]').forEach(r => {
+  r.addEventListener('change', () => {
+    rangeInput.disabled = (r.value !== 'range') ? true : false;
+  });
+});
+
+async function handlePDF(file) {
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    uploadedBytes = e.target.result;
+    const pdf = await pdfjsLib.getDocument({ data: uploadedBytes }).promise;
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 1.2 });
+    const context = canvas.getContext('2d');
+    canvas.height = viewport.height;
+    canvas.width = viewport.width;
+    canvas.style.display = 'block';
+    await page.render({ canvasContext: context, viewport }).promise;
+    splitOptions.style.display = 'block';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+async function splitPDF() {
+  const type = document.querySelector('input[name="splitType"]:checked').value;
+  const origPDF = await PDFLib.PDFDocument.load(uploadedBytes);
+  const totalPages = origPDF.getPageCount();
+
+  if (type === 'each') {
+    for (let i = 0; i < totalPages; i++) {
+      const newDoc = await PDFLib.PDFDocument.create();
+      const [copied] = await newDoc.copyPages(origPDF, [i]);
+      newDoc.addPage(copied);
+      const bytes = await newDoc.save();
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      triggerDownload(blob, `page-${i + 1}.pdf`);
+    }
+  } else {
+    const input = rangeInput.value;
+    const ranges = input.split(',').map(r => {
+      const [start, end] = r.split('-').map(n => parseInt(n.trim()) - 1);
+      return { start, end };
+    });
+
+    for (let r of ranges) {
+      const newDoc = await PDFLib.PDFDocument.create();
+      const copiedPages = await newDoc.copyPages(origPDF, Array.from({ length: r.end - r.start + 1 }, (_, i) => i + r.start));
+      copiedPages.forEach(p => newDoc.addPage(p));
+      const bytes = await newDoc.save();
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      triggerDownload(blob, `range-${r.start + 1}-${r.end + 1}.pdf`);
+    }
+  }
+}
+
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.textContent = `Download ${filename}`;
+  a.style.display = 'block';
+  a.style.marginTop = '10px';
+  a.style.color = 'blue';
+  document.getElementById('download-area').appendChild(a);
+  document.getElementById('download-area').style.display = 'block';
+}
+</script>
